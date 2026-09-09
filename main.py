@@ -122,20 +122,22 @@ def parse_nutrition(ntr_str):
 
 
 # ----------------------------------------------------
-# NEIS API 데이터 조회 함수
+# NEIS API 데이터 조회 함수 (에러 디버깅 보완 버전)
 # ----------------------------------------------------
 @st.cache_data(ttl=3600)
 def fetch_school_code(api_key, school_name):
     """학교명으로 ATPT_OFCDC_SC_CODE(시도교육청코드) 및 SD_SCHUL_CODE(행정표준코드) 검색"""
     url = "https://open.neis.go.kr/hub/schoolInfo"
-    key_param = api_key.strip() if api_key.strip() else "sample"
+
+    # 1. 인증키 공백 및 줄바꿈 완벽 제거
+    clean_key = api_key.strip() if api_key and api_key.strip() else "sample"
 
     params = {
-        "KEY": key_param,
+        "KEY": clean_key,
         "Type": "json",
         "pIndex": 1,
         "pSize": 10,
-        "SCHUL_NM": school_name,
+        "SCHUL_NM": school_name.strip(),
     }
 
     try:
@@ -151,9 +153,21 @@ def fetch_school_code(api_key, school_name):
                 None,
             )
         elif "RESULT" in data:
-            return None, None, None, data["RESULT"]["MESSAGE"]
+            # NEIS에서 반환한 정확한 에러 코드와 메시지 세부 출력
+            err_code = data["RESULT"].get("CODE", "UNKNOWN")
+            err_msg = data["RESULT"].get("MESSAGE", "알 수 없는 오류")
+            return None, None, None, f"[{err_code}] {err_msg}"
+        elif "head" in data:  # 일부 응답 구조 대응
+            head_result = data["head"][1]["RESULT"]
+            return (
+                None,
+                None,
+                None,
+                f"[{head_result.get('CODE')}] {head_result.get('MESSAGE')}",
+            )
+
     except Exception as e:
-        return None, None, None, str(e)
+        return None, None, None, f"통신 오류: {str(e)}"
 
     return None, None, None, "학교 정보를 찾을 수 없습니다."
 
@@ -167,11 +181,12 @@ def fetch_monthly_meal(
     last_day = calendar.monthrange(year, month)[1]
     to_date = f"{year}{month:02d}{last_day:02d}"
 
-    key_param = api_key.strip() if api_key.strip() else "sample"
+    # 1. 인증키 공백 및 줄바꿈 완벽 제거
+    clean_key = api_key.strip() if api_key and api_key.strip() else "sample"
 
     url = "https://open.neis.go.kr/hub/mealServiceDietInfo"
     params = {
-        "KEY": key_param,
+        "KEY": clean_key,
         "Type": "json",
         "pIndex": 1,
         "pSize": 1000,
@@ -228,9 +243,11 @@ def fetch_monthly_meal(
 
             return meals_by_date, raw_list, None
         elif "RESULT" in data:
-            return {}, [], data["RESULT"]["MESSAGE"]
+            err_code = data["RESULT"].get("CODE", "UNKNOWN")
+            err_msg = data["RESULT"].get("MESSAGE", "알 수 없는 오류")
+            return {}, [], f"[{err_code}] {err_msg}"
     except Exception as e:
-        return {}, [], str(e)
+        return {}, [], f"통신 오류: {str(e)}"
 
     return {}, [], "급식 데이터를 가져오지 못했습니다."
 
