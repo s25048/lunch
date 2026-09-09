@@ -98,6 +98,22 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ----------------------------------------------------
+# NEIS API 키 검증 및 시크릿 불러오기 🔑
+# ----------------------------------------------------
+if "NEIS_KEY" not in st.secrets or not st.secrets["NEIS_KEY"].strip():
+    st.error(
+        "🌸 **NEIS API 키가 설정되지 않았어요!** 🌸\n\n"
+        "Streamlit 실행 환경의 `.streamlit/secrets.toml` 파일에 아래와 같이 인증키를 추가해주세요 🎀\n\n"
+        "```toml\n"
+        'NEIS_KEY = "발급받은_NEIS_API_키"\n'
+        "```\n\n"
+        "테스트용 샘플 키를 사용하려면 `NEIS_KEY = \"sample\"` 로 설정할 수 있습니다."
+    )
+    st.stop()
+
+API_KEY = st.secrets["NEIS_KEY"].strip()
+
 
 # ----------------------------------------------------
 # 영양 정보 텍스트 파싱 함수
@@ -122,18 +138,15 @@ def parse_nutrition(ntr_str):
 
 
 # ----------------------------------------------------
-# NEIS API 데이터 조회 함수 (에러 디버깅 보완 버전)
+# NEIS API 데이터 조회 함수 (st.secrets 적용)
 # ----------------------------------------------------
 @st.cache_data(ttl=3600)
 def fetch_school_code(api_key, school_name):
     """학교명으로 ATPT_OFCDC_SC_CODE(시도교육청코드) 및 SD_SCHUL_CODE(행정표준코드) 검색"""
     url = "https://open.neis.go.kr/hub/schoolInfo"
 
-    # 1. 인증키 공백 및 줄바꿈 완벽 제거
-    clean_key = api_key.strip() if api_key and api_key.strip() else "sample"
-
     params = {
-        "KEY": clean_key,
+        "KEY": api_key,
         "Type": "json",
         "pIndex": 1,
         "pSize": 10,
@@ -153,11 +166,10 @@ def fetch_school_code(api_key, school_name):
                 None,
             )
         elif "RESULT" in data:
-            # NEIS에서 반환한 정확한 에러 코드와 메시지 세부 출력
             err_code = data["RESULT"].get("CODE", "UNKNOWN")
             err_msg = data["RESULT"].get("MESSAGE", "알 수 없는 오류")
             return None, None, None, f"[{err_code}] {err_msg}"
-        elif "head" in data:  # 일부 응답 구조 대응
+        elif "head" in data:
             head_result = data["head"][1]["RESULT"]
             return (
                 None,
@@ -181,12 +193,9 @@ def fetch_monthly_meal(
     last_day = calendar.monthrange(year, month)[1]
     to_date = f"{year}{month:02d}{last_day:02d}"
 
-    # 1. 인증키 공백 및 줄바꿈 완벽 제거
-    clean_key = api_key.strip() if api_key and api_key.strip() else "sample"
-
     url = "https://open.neis.go.kr/hub/mealServiceDietInfo"
     params = {
-        "KEY": clean_key,
+        "KEY": api_key,
         "Type": "json",
         "pIndex": 1,
         "pSize": 1000,
@@ -304,11 +313,7 @@ st.caption("💖 오늘 우리 학교에는 맛있는 급식이 나올까요? �
 with st.sidebar:
     st.header("⚙️ 핑크 검색 설정 🌸")
 
-    api_key = st.text_input(
-        "NEIS API Key (선택)",
-        value="",
-        help="미입력 시 sample 키로 동작합니다.",
-    )
+    st.success("🔑 NEIS API 키가 성공적으로 로드되었습니다.")
 
     school_name_input = st.text_input(
         "🏫 학교 이름", value="제주중앙고등학교", placeholder="예: 서울고등학교"
@@ -334,7 +339,7 @@ with st.sidebar:
 if search_btn or school_name_input:
     with st.spinner("💖 공주님의 맛있는 급식표를 가져오는 중... ✨"):
         office_code, school_code, full_school_name, err_msg = fetch_school_code(
-            api_key, school_name_input
+            API_KEY, school_name_input
         )
 
         if not school_code:
@@ -346,7 +351,7 @@ if search_btn or school_name_input:
 
             # 데이터 로드
             meal_data, raw_list, meal_err_msg = fetch_monthly_meal(
-                api_key,
+                API_KEY,
                 office_code,
                 school_code,
                 selected_year,
